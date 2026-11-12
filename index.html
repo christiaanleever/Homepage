@@ -20,6 +20,17 @@ h1{margin:0;font-size:24px}.subtitle{color:var(--muted);font-size:11px}
 .filter,.stat,.badge,.expand-all{border-radius:999px;border:1px solid var(--border);background:#13201e;color:var(--muted)}
 .filter,.expand-all{padding:5px 9px;cursor:pointer}.filter.active,.expand-all:hover{color:#fff;border-color:#6e817a;background:#263633}
 .stat{padding:5px 8px}.stat b{color:#fff}
+.overall{padding:15px 18px;margin:0 0 17px;border:1px solid #526258;border-radius:12px;background:linear-gradient(180deg,#1b2c28,#15221f)}
+.overall-head{display:flex;flex-wrap:wrap;align-items:end;justify-content:space-between;gap:10px}
+.overall-title{font-size:15px;font-weight:800;color:#f0f4ed}.overall-scope{font-size:11px;color:var(--muted);margin-top:2px}
+.overall-totals{font-size:16px;font-weight:800;color:#f5ebcf;font-variant-numeric:tabular-nums}
+.overall-bar{height:20px;display:flex;overflow:hidden;width:100%;border-radius:6px;margin:13px 0 11px;background:#33433e}
+.overall-bar .seg{height:100%;min-width:0}
+.overall-bar .seg.Retired{background:var(--retired)}.overall-bar .seg.BugOpen{background:var(--bugopen)}.overall-bar .seg.BugRepro{background:var(--bugrepro)}.overall-bar .seg.BugResolved{background:var(--bugresolved)}.overall-bar .seg.BugWontFix{background:var(--bugwontfix)}
+.overall-breakdown{display:flex;flex-wrap:wrap;gap:7px 15px}
+.overall-item{display:inline-flex;gap:6px;align-items:center;font-size:11px;color:#d2dcd6}.overall-item b{font-size:12px;color:#fff;font-variant-numeric:tabular-nums}
+.overall-item .legend-dot{width:9px;height:9px;border-radius:2px}
+@media(max-width:680px){.overall{padding:13px}.overall-totals{font-size:14px}.overall-bar{height:18px}}
 .grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;align-items:start}
 .feature{background:linear-gradient(180deg,var(--panel2),var(--panel));border:1px solid var(--border);border-radius:12px;overflow:hidden;box-shadow:0 8px 24px rgba(0,0,0,.15)}
 .feature-head{width:100%;display:block;text-align:left;background:transparent;color:inherit;border:0;padding:10px 11px;cursor:pointer}
@@ -56,6 +67,7 @@ h1{margin:0;font-size:24px}.subtitle{color:var(--muted);font-size:11px}
 <div class="filters" id="filters"></div>
 <div class="stats" id="stats"></div>
 <div class="legend" id="legend"></div>
+<section class="overall" id="overall" aria-label="Overall project status"></section>
 <main>
 <div class="grid" id="grid"></div>
 <section class="bug-register" id="bugsSection" aria-labelledby="bugsTitle">
@@ -127,7 +139,21 @@ function render(){
     sec.querySelector('.feature-head').addEventListener('click',()=>toggleCard(b.id));bugGrid.appendChild(sec);
   });
   if(!vis.length&&!bugs.length)grid.innerHTML='<div class="empty-state">No features, retired stories or bugs match the current search/filter.</div>';
-  stats.innerHTML='<span class="stat"><b>'+FEATURES.length+'</b> features</span><span class="stat"><b>'+active.length+'</b> active feature stories</span>'+STATUS.slice().reverse().map(s=>'<span class="stat">'+esc(LABEL[s])+' <b>'+counts[s]+'</b></span>').join('')+'<span class="stat">Retired <b>'+(all.length-active.length)+'</b></span><span class="stat">Bugs <b>'+BUGS.length+'</b></span><span class="stat">Shown: <b>'+shownStories+'</b> stories · <b>'+bugs.length+'</b> bugs</span>';
+  stats.innerHTML='<span class="stat"><b>'+FEATURES.length+'</b> features</span><span class="stat"><b>'+active.length+'</b> active feature stories</span>'+STATUS.slice().reverse().map(s=>'<span class="stat">'+esc(LABEL[s])+' <b>'+counts[s]+'</b></span>').join('')+'<span class="stat">Retired <b>'+(all.length-active.length)+'</b></span><span class="stat">Bugs <b>'+BUGS.length+'</b></span>';
+  // Use the exact matched records that render into cards, including search and bug-only filters.
+  const shown=vis.flatMap(({m})=>m.stories);
+  const storyCounts=Object.fromEntries([...STATUS,'Retired'].map(s=>[s,0]));
+  shown.forEach(s=>storyCounts[s.status]++);
+  const bugCounts=Object.fromEntries(BUG_STATUS.map(s=>[s,0]));
+  bugs.forEach(b=>bugCounts[b.status]++);
+  const groups=[...STATUS,'Retired'].filter(s=>storyCounts[s]).map(s=>({label:LABEL[s],count:storyCounts[s],css:CLASS[s],color:overviewColor(s)}));
+  const bugGroups=BUG_STATUS.filter(s=>bugCounts[s]).map(s=>({label:'Bug: '+s,count:bugCounts[s],css:CLASS[s],color:overviewColor(s)}));
+  const parts=groups.length?groups:bugGroups;
+  const total=parts.reduce((n,p)=>n+p.count,0);
+  const bar=total?parts.map(p=>'<span class="seg '+p.css+'" style="width:'+(p.count/total*100)+'%" title="'+esc(p.label+': '+p.count)+'"></span>').join(''):'';
+  const breakdown=[...groups,...bugGroups].map(p=>'<span class="overall-item"><span class="legend-dot" style="background:var('+p.color+')"></span>'+esc(p.label)+' <b>'+p.count+'</b></span>').join('');
+  const scope=selected==='All'?'All active stories + bugs':selected==='Active'?'Active stories':selected==='Retired'?'Retired stories':selected==='Bugs'?'All bugs':selected.startsWith('Bug:')?'Bug status: '+selected.slice(4):'Story status: '+selected;
+  document.getElementById('overall').innerHTML='<div class="overall-head"><div><div class="overall-title">Overall project status</div><div class="overall-scope">'+esc(scope)+(query.trim()?' · Search: '+esc(query.trim()):'')+'</div></div><div class="overall-totals">'+shown.length+' '+(shown.length===1?'story':'stories')+' shown · '+bugs.length+' '+(bugs.length===1?'bug':'bugs')+'</div></div><div class="overall-bar" role="img" aria-label="'+esc(parts.map(p=>p.count+' '+p.label).join(', ')||'No matching records')+'">'+bar+'</div><div class="overall-breakdown">'+(breakdown||'<span class="overall-item">No matching items</span>')+'</div>';
   const keys=[...vis.map(({f})=>f.id),...bugs.map(b=>b.id)];
   const allExpanded=keys.length>0&&!forcedOpen()&&keys.every(id=>expanded.has(id));
   expandAll.textContent=allExpanded?'Collapse all':'Expand all';expandAll.disabled=forcedOpen()||keys.length===0;expandAll.title=forcedOpen()?'Matching records expand automatically while search/filter is active':'';
@@ -137,6 +163,7 @@ filters.innerHTML=filterButton('All','All active stories + bugs')+filterButton('
 filters.addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;selected=b.dataset.s;filters.querySelectorAll('button').forEach(x=>x.classList.toggle('active',x===b));render()});
 search.addEventListener('input',()=>{query=search.value;render()});
 expandAll.addEventListener('click',()=>{const keys=[...visibleFeatures().map(({f})=>f.id),...visibleBugs().map(b=>b.id)];const all=keys.length&&keys.every(id=>expanded.has(id));keys.forEach(id=>all?expanded.delete(id):expanded.add(id));render()});
+const overviewColor=s=>({Backlog:'--backlog','Ready for development':'--ready',Developing:'--developing',Playtesting:'--playtesting',Complete:'--complete',Retired:'--retired',Open:'--bugopen','Needs Reproduction':'--bugrepro',Resolved:'--bugresolved',"Won't Fix":'--bugwontfix'})[s];
 const colors={'Backlog':'backlog','Ready for development':'ready','Developing':'developing','Playtesting':'playtesting','Complete':'complete','Retired':'retired','Open':'bugopen','Needs Reproduction':'bugrepro','Resolved':'bugresolved',"Won't Fix":'bugwontfix'};
 legend.innerHTML=[...STATUS,'Retired',...BUG_STATUS].map(s=>'<span class="legend-item"><span class="legend-dot" style="background:var(--'+colors[s]+')"></span>'+esc(BUG_STATUS.includes(s)?'Bug: '+s:LABEL[s])+'</span>').join('');
 function showTip(node){const title=node.dataset.tipTitle||node.dataset.title;if(!title)return;const status=node.dataset.tipStatus||node.dataset.status||'',intent=node.dataset.tipIntent||node.dataset.intent||'';tip.innerHTML='<b>'+esc(title)+'</b><span>'+esc(status)+'</span>'+(intent?'<small>Current intent / result</small><div>'+esc(intent)+'</div>':'');tip.classList.add('show')}
